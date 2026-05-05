@@ -1,4 +1,8 @@
 spring:
+  application:
+    name: request-service
+  config:
+    import: "configserver:"
   cloud:
     config:
       discovery:
@@ -10,6 +14,7 @@ spring:
         initial-interval: 1000
         multiplier: 1.5
         max-interval: 6000
+
 eureka:
   client:
     serviceUrl:
