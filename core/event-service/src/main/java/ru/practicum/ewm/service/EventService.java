@@ -18,7 +18,10 @@ import ru.practicum.ewm.core.exception.ConflictException;
 import ru.practicum.ewm.core.exception.NotFoundException;
 import ru.practicum.ewm.dto.category.CategoryDto;
 import ru.practicum.ewm.dto.comment.CommentDto;
-import ru.practicum.ewm.dto.event.*;
+import ru.practicum.ewm.dto.event.EventFullDto;
+import ru.practicum.ewm.dto.event.EventNewDto;
+import ru.practicum.ewm.dto.event.EventShortDto;
+import ru.practicum.ewm.dto.event.EventUpdateDto;
 import ru.practicum.ewm.dto.user.UserDto;
 import ru.practicum.ewm.feign.category.CategoryClient;
 import ru.practicum.ewm.feign.comment.CommentClient;
@@ -64,7 +67,7 @@ public class EventService {
         Event event = mapper.toEntityFromDto(dto, userId, dto.getCategory(), location);
         event.setCreatedOn(LocalDateTime.now());
         event = repository.save(event);
-        log.info("Создано событие с id = {}", event.getId());
+        log.info("Создано событи�� с id = {}", event.getId());
 
         return mapper.eventToFullDto(event, null, null, null, category, initiator);
     }
@@ -144,7 +147,6 @@ public class EventService {
         Long calcConfirmedRequests = getConfirmedRequests(eventId);
         Long calcView = statsService.getViewsForEvent(eventId);
         return mapper.eventToFullDto(event, calcConfirmedRequests, calcView, getComments(eventId), category, initiator);
-
     }
 
     @Transactional(readOnly = true)
@@ -157,7 +159,6 @@ public class EventService {
         Long calcView = statsService.getViewsForEvent(eventId);
         log.info("Получено событие {} пользователя {}", eventId, userId);
         return mapper.eventToFullDto(event, calcConfirmedRequests, calcView, getComments(eventId), category, initiator);
-
     }
 
     @Transactional(readOnly = true)
@@ -199,7 +200,6 @@ public class EventService {
         Map<Long, CategoryDto> categories = categoryClient.findAllByIds(categoryIds);
         Map<Long, Long> confirmedRequests = requestClient.countConfirmedByEventIds(eventIds);
 
-
         return events.stream()
                 .map(event -> mapper.eventToShortDto(
                         event,
@@ -225,16 +225,17 @@ public class EventService {
                     String uri = "/events/" + event.getId();
                     Long views = viewsMap.getOrDefault(uri, 0L);
 
-                    CategoryDto categories;
+                    CategoryDto category;
                     try {
-                        categories = categoryClient.getCategoryById(event.getCategoryId());
+                        category = categoryClient.getCategoryById(event.getCategoryId());
                     } catch (ConditionsException e) {
                         throw new RuntimeException(e);
                     }
 
                     UserDto initiator = getUserOrThrow(event.getInitiatorId());
+                    Long confirmedRequests = getConfirmedRequests(event.getId());
 
-                    return mapper.eventToShortDto(event, getConfirmedRequests(event.getId()), views, categories, initiator);
+                    return mapper.eventToShortDto(event, confirmedRequests, views, category, initiator);
                 }
         );
     }
@@ -249,17 +250,18 @@ public class EventService {
                     String uri = "/events/" + event.getId();
                     Long views = viewsMap.getOrDefault(uri, 0L);
 
-                    CategoryDto categories;
+                    CategoryDto category;
                     try {
-                        categories = categoryClient.getCategoryById(event.getCategoryId());
+                        category = categoryClient.getCategoryById(event.getCategoryId());
                     } catch (ConditionsException e) {
                         throw new RuntimeException(e);
                     }
 
                     UserDto initiator = getUserOrThrow(event.getInitiatorId());
+                    Long confirmedRequests = getConfirmedRequests(event.getId());
 
-                    return mapper.eventToFullDto(event, getConfirmedRequests(event.getId()), views,
-                            getComments(event.getId()), categories, initiator);
+                    return mapper.eventToFullDto(event, confirmedRequests, views,
+                            getComments(event.getId()), category, initiator);
                 }
         );
     }
@@ -287,7 +289,6 @@ public class EventService {
         Map<Long, CategoryDto> categories = categoryClient.findAllByIds(categoryIds);
         Map<Long, UserDto> users = userClient.findAllByIds(userIds);
 
-
         return events.stream()
                 .map(event -> mapper.eventToShortDto(
                         event,
@@ -307,11 +308,10 @@ public class EventService {
         BooleanBuilder predicate = EventPredicateBuilder.buildPredicate(filter, forAdmin);
 
         if (!forAdmin) {
-            pageable = PageRequest.of(
+            pageable = org.springframework.data.domain.PageRequest.of(
                     pageable.getPageNumber(),
                     pageable.getPageSize(),
                     Sort.by(Sort.Direction.DESC, "eventDate")
-
             );
         }
         Page<Event> eventsPage = repository.findAll(predicate, pageable);

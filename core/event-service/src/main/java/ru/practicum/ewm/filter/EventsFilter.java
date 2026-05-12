@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import ru.practicum.ewm.constant.EventSort;
 import ru.practicum.ewm.constant.EventState;
 import ru.practicum.ewm.core.annotation.DateRange;
 import ru.practicum.ewm.core.annotation.DateRangeAware;
@@ -16,7 +17,6 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-
 @DateRange
 public class EventsFilter implements DateRangeAware {
 
@@ -24,22 +24,21 @@ public class EventsFilter implements DateRangeAware {
 
     private Boolean paid;
 
-    // --- Добавлено из AdminEventsFilter ---
     private List<Long> users;
+
     private List<String> states;
-    // ---------------------------------------
 
     private List<Long> categories;
 
-    //@NotNull(message = "фильтр: `Время запроса начало` обязательно к заполнению")
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime rangeStart;
 
-    //@NotNull(message = "фильтр: `Время запроса окончание` обязательно к заполнению")
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime rangeEnd;
 
-    private Boolean onlyAvailable = false;
+    private Boolean onlyAvailable;
+
+    private EventSort sort;
 
     @Override
     public LocalDateTime getStart() {
@@ -51,12 +50,12 @@ public class EventsFilter implements DateRangeAware {
         return rangeEnd;
     }
 
-    // Утилитный метод для получения states как EventState (чтобы не дублировать в сервисе)
     public List<EventState> getStatesAsEnum() {
         if (this.states == null || this.states.isEmpty()) {
             return null;
         }
         return this.states.stream()
+                .map(String::toUpperCase)
                 .map(EventState::valueOf)
                 .toList();
     }

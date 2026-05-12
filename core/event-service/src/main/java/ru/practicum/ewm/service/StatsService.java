@@ -45,7 +45,7 @@ public class StatsService {
                 .collect(Collectors.toMap(
                         ViewStatsDto::getUri,
                         ViewStatsDto::getHits,
-                        (existing, replacement) -> existing // на случай дублей
+                        (existing, replacement) -> existing
                 ));
     }
 

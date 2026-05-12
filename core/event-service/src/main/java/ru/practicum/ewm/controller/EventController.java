@@ -8,7 +8,11 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import ru.practicum.ewm.core.exception.ConditionsException;
 import ru.practicum.ewm.core.exception.ConflictException;
 import ru.practicum.ewm.dto.event.EventFullDto;
@@ -20,21 +24,24 @@ import java.util.List;
 import java.util.Set;
 
 @RestController
-@RequestMapping(path = "/events")
+@RequestMapping("/events")
 @RequiredArgsConstructor
 @Validated
 public class EventController {
+
     private final EventService service;
 
     @GetMapping
     public List<EventShortDto> find(
             @ParameterObject @Valid EventsFilter filter,
-            @PageableDefault(page = 0, size = 10) Pageable pageable, HttpServletRequest request) {
+            @PageableDefault(page = 0, size = 10) Pageable pageable,
+            HttpServletRequest request) {
         return service.findPublicEventsWithFilter(filter, pageable, request);
     }
 
     @GetMapping("/{id}")
-    public EventFullDto findById(@PathVariable @Positive Long id, HttpServletRequest request) throws ConflictException, ConditionsException {
+    public EventFullDto findById(@PathVariable @Positive Long id, HttpServletRequest request)
+            throws ConflictException, ConditionsException {
         return service.findPublicEventById(id, request);
     }
 

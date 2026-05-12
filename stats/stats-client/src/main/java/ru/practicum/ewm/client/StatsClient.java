@@ -55,7 +55,7 @@ public class StatsClient {
         }
 
         log.info("Отправка запроса saveHit: url={}, body={}", uri, hitDto);
-        restTemplate.postForLocation(uri, hitDto); // POST без тела ответа
+        restTemplate.postForLocation(uri, hitDto);
         log.info("Hit был сохранен");
     }
 

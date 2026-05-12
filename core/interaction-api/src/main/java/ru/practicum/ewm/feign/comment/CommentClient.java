@@ -10,5 +10,5 @@ import java.util.List;
 @FeignClient(name = "comment-service", fallbackFactory = CommentClientFallbackFactory.class)
 public interface CommentClient {
     @GetMapping("/comments/{id}/all")
-    List<CommentDto> findAllCommentsForEvent(@PathVariable Long id);
+    List<CommentDto> findAllCommentsForEvent(@PathVariable("id") Long id);
 }

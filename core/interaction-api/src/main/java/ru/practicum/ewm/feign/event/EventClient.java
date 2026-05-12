@@ -13,10 +13,10 @@ import java.util.Set;
 @FeignClient(name = "event-service", fallbackFactory = EventClientFallbackFactory.class)
 public interface EventClient {
     @GetMapping("/events/{id}")
-    EventFullDto getEventById(@PathVariable Long id) throws ConflictException;
+    EventFullDto getEventById(@PathVariable("id") Long id) throws ConflictException;
 
     @GetMapping("/events/category/{catId}/exists")
-    Boolean existsByCategoryId(@PathVariable Long catId);
+    Boolean existsByCategoryId(@PathVariable("catId") Long catId);
 
     @GetMapping("/events/by-ids")
     Set<EventShortDto> findAllByIdIn(@RequestParam("ids") Set<Long> ids);

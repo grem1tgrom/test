@@ -37,6 +37,7 @@ public class CompilationService {
     @Validated(CreateValidation.class)
     public CompilationFullDto create(@Valid CompilationUpdateDto dto) throws ConditionsException {
         Set<Long> eventIds = getUniqueEventIds(dto.getEvents());
+        validateEventsExist(eventIds);
 
         Compilation compilation = repository.save(mapper.toEntity(dto, eventIds));
         Set<EventShortDto> event = eventClient.findAllByIdIn(compilation.getEvents());
@@ -53,13 +54,14 @@ public class CompilationService {
         log.info("Удалена подборка id = {}", compId);
     }
 
-
     @Transactional
     @Validated(UpdateValidation.class)
     public CompilationFullDto update(Long compId, @Valid CompilationUpdateDto dto) throws ConditionsException {
-        var compilation = findById(compId);
+        Compilation compilation = findById(compId);
 
         Set<Long> events = getUniqueEventIds(dto.getEvents());
+        validateEventsExist(events);
+
         compilation = mapper.toEntityGeneral(compilation, dto, events);
         Set<EventShortDto> event = eventClient.findAllByIdIn(compilation.getEvents());
         log.info("Обновлена подборка id = {}", compId);
@@ -95,6 +97,17 @@ public class CompilationService {
         }
 
         return unique;
+    }
+
+    private void validateEventsExist(Set<Long> eventIds) {
+        if (eventIds == null || eventIds.isEmpty()) {
+            return;
+        }
+
+        Set<EventShortDto> events = eventClient.findAllByIdIn(eventIds);
+        if (events.size() != eventIds.size()) {
+            throw new NotFoundException("Некоторые события не найдены");
+        }
     }
 
     @Transactional(readOnly = true)

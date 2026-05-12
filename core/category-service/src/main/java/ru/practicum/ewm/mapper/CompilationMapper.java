@@ -13,7 +13,7 @@ import ru.practicum.ewm.model.Compilation;
 
 import java.util.Set;
 
-@Mapper(config = CommonMapperConfiguration.class) //проверить
+@Mapper(config = CommonMapperConfiguration.class)
 public interface CompilationMapper {
 
     @BeanMapping(ignoreByDefault = true, nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)

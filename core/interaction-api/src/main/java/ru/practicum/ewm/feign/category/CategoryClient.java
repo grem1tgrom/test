@@ -13,8 +13,8 @@ import java.util.Set;
 @FeignClient(name = "category-service", fallbackFactory = CategoryClientFallbackFactory.class)
 public interface CategoryClient {
     @GetMapping("/categories/{id}")
-    CategoryDto getCategoryById(@PathVariable Long id) throws ConditionsException;
+    CategoryDto getCategoryById(@PathVariable("id") Long id) throws ConditionsException;
 
     @GetMapping("/categories/by-ids")
-    Map<Long, CategoryDto> findAllByIds(@RequestParam Set<Long> ids) throws ConditionsException;
+    Map<Long, CategoryDto> findAllByIds(@RequestParam("ids") Set<Long> ids) throws ConditionsException;
 }
