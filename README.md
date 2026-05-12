@@ -1,95 +1,180 @@
-# ExploreWithMe — Microservices (Spring Cloud)
+# Explore With Me
+
+**Explore With Me** — Приложение афиша.
+В этой афише можно предложить какое-либо событие от выставки до похода в кино и собрать компанию для участия в нём.
+
+---
 
 ## Архитектура
 
-Проект переведён на микросервисную архитектуру и готов к запуску в облачной среде.
+Проект состоит из нескольких выделенных сервисов:
 
-### Инфраструктурные сервисы (module `infra`)
-- **discovery-server** — Spring Cloud Eureka (реестр/обнаружение сервисов)
-- **config-server** — Spring Cloud Config Server (централизованные конфиги)
-- **gateway-server** — Spring Cloud Gateway (единая точка входа)
+| Сервис                  | Назначение                                                                                                                                                           |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **event-service**       | Управление событиями (создание, публикация, просмотр)                                                                                                                |
+| **request-service**     | Управление заявками на участие в событиях                                                                                                                            |
+| **user-service**        | Управление пользователями                                                                                                                                            |
+| **category-service**    | Управление категориями событий                                                                                                                                       |
+| **comment-service**     | Управление комментариями к событиям                                                                                                                                  |
+| **compilation-service** | Управление подборками событий                                                                                                                                        |
+| **collector**           | Принимать сообщения о действиях пользователей Записывать полученные данные в Kafka-топик `stats.user-actions.v1`                                                     |
+| **aggregator**          | Читать данные из топика `stats.user-actions.v1` и рассчитывать сходство мероприятий и записывать результаты в топик `stats.events-similarity.v1`                     |
+| **analyzer**            | Обрабатывать запросы и предоставляет список рекомендуемых мероприятий, мероприятий, которые похожи на указанное и с которыми пользователь ещё не взаимодействовал.   |
 
-### Бизнес-сервисы (module `core`)
-- **event-service** — управление мероприятиями (поиск/просмотр/создание/изменение)
-- **request-service** — управление заявками на участие
-- **user-service** — администрирование пользователями
-- **category-service** — категории
-- **comment-service** — комментарии
-- **interaction-api** — общий модуль для межсервисного взаимодействия (Feign-клиенты + DTO/контракты)
+### Взаимодействие между сервисами
 
-### Статистика (module `stats`)
-- **stats-server** — сервис статистики
-- **stats-client / stats-dto** — клиент и DTO для общения со статистикой
+- Все сервисы зарегистрированы в **Eureka Discovery Service**, что позволяет использовать `@FeignClient` для вызовов
+  между сервисами.
+- Для предотвращения падений при недоступности сервисов используется **Resilience4j Circuit Breaker**.
+- Внутренний API реализован через REST-контроллеры с DTO. Каждый сервис предоставляет **fallback-фабрики**, чтобы
+  клиентские сервисы получали заглушки, если сервис недоступен.
 
-## Взаимодействие сервисов
+---
 
-- Все сервисы регистрируются в **Eureka**.
-- Все сервисы получают конфигурацию из **Config Server** (через discovery).
-- Внешние запросы идут только через **Gateway** (порт `8080`).
-- Межсервисное взаимодействие реализовано через **OpenFeign** с резервацией/устойчивостью через **Resilience4j** (fallbackFactory).
+## Порядок запуска сервисов
 
-## Где лежат конфигурации
+Сервисы необходимо запускать в следующем порядке:
 
-Конфиги хранятся в `infra/config-server/src/main/resources/config/**`:
+1. **discovery-server**
+2. **config-server**
+3. **event-service**
+4. **user-service**
+5. **category-service**
+6. **request-service**
+7. **comment-service**
+8. **collector**
+9. **aggregator**
+10. **analyzer**
+11. **gateway-server**
 
-- `config/infra/gateway-server/application.yaml` — конфиг gateway (порт 8080 + маршруты)
-- `config/infra/config-server/application.yaml` — конфиг config-server (native)
-- `config/infra/discovery-server/application.yaml` — конфиг discovery-server
-- `config/core/<service-name>/application.yaml` — конфиги core-сервисов
-- `config/stats/stats-server/application.yaml` — конфиг stats-server
+Сервисы **с 3 по 7** не имеют жёстких зависимостей по порядку запуска и могут быть запущены **в любом порядке** после старта `discovery-server` и `config-server`.
+ 
 
-> В большинстве сервисов используется `server.port: 0` (случайный порт), чтобы запускать несколько инстансов.
+После запуска всех сервисов приложение полностью готово к работе и приёму внешних HTTP-запросов через **Gateway**.
 
-## Внутренний API (межсервисный)
+---
 
-Внутренние вызовы выполняются через Feign-клиенты из модуля `core/interaction-api`, например:
-- `@FeignClient(name = "event-service", ...)`
-- `@FeignClient(name = "user-service", ...)`
-- `@FeignClient(name = "request-service", ...)`
-- `@FeignClient(name = "category-service", ...)`
-- `@FeignClient(name = "comment-service", ...)`
+## Внутренний API
 
-Адрес сервиса определяется через Eureka (serviceId = имя приложения).
+Ниже перечислены основные эндпоинты каждого сервиса, с указанием **ответа fallback**, который возвращается, если сервис
+недоступен.
+
+### Event Service
+
+| Метод                                 | Описание                                | Fallback                                        |
+|---------------------------------------|-----------------------------------------|-------------------------------------------------|
+| `GET /events/{id}`                    | Получение полной информации о событии   | `ConflictException("event-service недоступен")` |
+| `GET /events/category/{catId}/exists` | Проверка наличия категории              | `true`                                          |
+| `GET /events/by-ids?ids=1,2,3`        | Получение краткой информации о событиях | `Set.of()`                                      |
+
+### Request Service
+
+| Метод                                | Описание                                        | Fallback         |
+|--------------------------------------|-------------------------------------------------|------------------|
+| `GET /requests/{id}/{status}`        | Подсчёт заявок события по статусу               | `0L`             |
+| `GET /requests/count?eventIds=1,2,3` | Подсчёт подтверждённых заявок по списку событий | Все значения `0` |
+
+### User Service
+
+| Метод                               | Описание                                        | Fallback                                       |
+|-------------------------------------|-------------------------------------------------|------------------------------------------------|
+| `GET /admin/users/{id}`             | Получение информации о пользователе             | `NotFoundException("user-service недоступен")` |
+| `GET /admin/users/{id}/name`        | Получение имени пользователя                    | `"Unknown"`                                    |
+| `GET /admin/users/by-ids?ids=1,2,3` | Получение информации о нескольких пользователях | `NotFoundException("user-service недоступен")` |
+
+### Comment Service
+
+| Метод                    | Описание                                | Fallback                  |
+|--------------------------|-----------------------------------------|---------------------------|
+| `GET /comments/{id}/all` | Получение всех комментариев для события | `Collections.emptyList()` |
+
+### Category Service
+
+| Метод                              | Описание                       | Fallback                                             |
+|------------------------------------|--------------------------------|------------------------------------------------------|
+| `GET /categories/{id}`             | Получение категории            | `ConditionsException("category-service недоступен")` |
+| `GET /categories/by-ids?ids=1,2,3` | Получение нескольких категорий | `ConditionsException("category-service недоступен")` |
+
+---
 
 ## Внешний API
 
-Внешний API доступен через **Gateway**: `http://localhost:8080/**`
+Внешний REST API сервиса описан спецификацией в формате OpenAPI (Swagger).  
+Эта спецификация может быть использована для генерации клиента, тестирования, или изучения доступных эндпоинтов и
+структур данных.
 
-Спецификация внешнего API:
-- ссылка на swagger/openapi из группового проекта (вставьте ссылку сюда)
+- Основной сервис:  
+  https://github.com/imaspa/java-explore-with-me-plus/blob/main/ewm-main-service-spec.json
 
-## Запуск
+  Эта спецификация описывает все публичные эндпоинты основного сервиса (Event, User, Request, Comment, Category) и
+  включает необходимые схемы данных.
 
-### Локально (IDE)
-Рекомендуемый порядок запуска:
-1. `infra/discovery-server`
-2. `infra/config-server`
-3. `infra/gateway-server`
-4. `stats/stats-server`
-5. core-сервисы: `event-service`, `user-service`, `request-service`, `category-service`, `comment-service`
 
-После старта:
-- Eureka: `http://localhost:8761`
-- Gateway: `http://localhost:8080`
+- Сервис сбора статистики::  
+  https://github.com/imaspa/java-explore-with-me-plus/blob/main/ewm-stats-service-spec.json
 
-### Через Docker Compose
-Если есть `docker-compose.yml`, запуск:
-```bash
-docker compose up --build
-```
+---
 
-## Тестирование (Postman)
+## Конфигурация
 
-- Все Postman-тесты должны отправляться **только на Gateway**: `http://localhost:8080`
-- Тесты не должны зависеть от внутренних портов/адресов сервисов.
+Все сервисы подтягивают настройки из **Spring Cloud Config Server**:
 
-## Надёжность (устойчивость к сбоям)
+- `server.port: 0` — позволяет запускать сервис на случайном свободном порту.
+- `stats-server.url` — URL сервиса статистики.
+- Инициализация SQL через `spring.sql.init.schema-locations` (используется `schema.sql`).
+- Настройки подключения к базе данных и Hibernate через `spring.datasource` и `spring.jpa`
+- Feign-клиенты используют таймауты подключения и чтения 5 секунд.
 
-Проверка:
-1. Запустить все сервисы и прогнать Postman.
-2. По одному останавливать микросервисы.
-3. Оставить только сервис мероприятий (event-service) и убедиться:
-    - запросы, не зависящие критически от остановленных сервисов, продолжают работать;
-    - при отсутствии данных других сервисов используются значения по умолчанию (например `0`).
+Пример для `event-service`:
 
-При необходимости применяется **Resilience4j Retry/CircuitBreaker** и fallback в Feign-клиентах.
+```yaml
+server:
+  port: 0
+
+stats-server:
+  url: http://localhost:9090
+
+spring:
+  application:
+    name: event-service
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: true
+
+  mvc:
+    format:
+      date: yyyy-MM-dd
+      date-time: yyyy-MM-dd HH:mm:ss
+      time: HH:mm:ss
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Europe/Moscow
+    locale: ru_RU
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5436/event-db
+    username: postgres
+    password: postgres
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+
+feign:
+  circuitbreaker:
+    enabled: true
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000

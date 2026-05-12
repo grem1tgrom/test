@@ -12,11 +12,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ru.practicum.ewm.core.exception.ConflictException;
 import ru.practicum.ewm.dto.category.CategoryDto;
 import ru.practicum.ewm.service.CategoryService;
 
 @RestController
-@RequestMapping("/admin/categories")
+@RequestMapping(path = "/admin/categories")
 @RequiredArgsConstructor
 @Validated
 public class AdminCategoryController {
@@ -24,18 +25,18 @@ public class AdminCategoryController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public CategoryDto create(@RequestBody CategoryDto dto) {
+    public CategoryDto create(@RequestBody CategoryDto dto) throws ConflictException {
         return service.create(dto);
     }
 
     @DeleteMapping("/{catId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@Positive @PathVariable Long catId) {
+    public void delete(@Positive @PathVariable Long catId) throws ConflictException {
         service.delete(catId);
     }
 
     @PatchMapping("/{catId}")
-    public CategoryDto update(@Positive @PathVariable Long catId, @RequestBody CategoryDto dto) {
+    public CategoryDto update(@Positive @PathVariable Long catId, @RequestBody CategoryDto dto) throws ConflictException {
         return service.update(catId, dto);
     }
 }
