@@ -96,12 +96,12 @@ public class RequestService {
 
     @Transactional(readOnly = true)
     public List<ParticipationRequestDto> getRequestsByUser(Long userId) throws ServiceUnavailableException {
-        UserDto user = userClient.getUserById(userId);
         try {
             userClient.getUserById(userId);
         } catch (Exception e) {
             throw new ServiceUnavailableException("user-service недоступен");
         }
+
         return repository.findByRequesterId(userId).stream()
                 .map(mapper::toDto)
                 .collect(Collectors.toList());
