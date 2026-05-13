@@ -1,6 +1,5 @@
 package ru.practicum.ewm.model;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.Getter;
@@ -15,15 +14,14 @@ import java.time.Instant;
 @Builder
 public class UserAction {
 
-    @NotBlank
+    @NotNull
     private Long userId;
 
-    @NotBlank
+    @NotNull
     private Long eventId;
 
     @NotNull
     private ActionType actionType;
 
     private Instant timestamp = Instant.now();
-
 }

@@ -8,6 +8,6 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 @ConfigurationPropertiesScan
 public class CollectorApp {
     public static void main(String[] args) {
-        SpringApplication.run(CollectorApp.class);
+        SpringApplication.run(CollectorApp.class, args);
     }
 }

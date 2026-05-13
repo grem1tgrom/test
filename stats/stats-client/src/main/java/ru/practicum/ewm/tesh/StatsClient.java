@@ -26,7 +26,7 @@ public class StatsClient {
     )
     public void recordView(Long userId, Long eventId) {
         sendAction(userId, eventId, ActionTypeProto.ACTION_VIEW);
-        log.info("Получен запрос просмотра");
+        log.info("Отправлено действие VIEW: userId={}, eventId={}", userId, eventId);
     }
 
     @Retryable(
@@ -36,6 +36,7 @@ public class StatsClient {
     )
     public void recordRegister(Long userId, Long eventId) {
         sendAction(userId, eventId, ActionTypeProto.ACTION_REGISTER);
+        log.info("Отправлено действие REGISTER: userId={}, eventId={}", userId, eventId);
     }
 
     @Retryable(
@@ -45,22 +46,32 @@ public class StatsClient {
     )
     public void recordLike(Long userId, Long eventId) {
         sendAction(userId, eventId, ActionTypeProto.ACTION_LIKE);
+        log.info("Отправлено действие LIKE: userId={}, eventId={}", userId, eventId);
     }
 
     private void sendAction(Long userId, Long eventId, ActionTypeProto actionType) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId не может быть null");
+        }
+        if (eventId == null) {
+            throw new IllegalArgumentException("eventId не может быть null");
+        }
+        if (actionType == null) {
+            throw new IllegalArgumentException("actionType не может быть null");
+        }
+
         try {
             UserActionProto userAction = UserActionMapper.toProto(userId, eventId, actionType, Instant.now());
             userActionStub.collectUserAction(userAction);
             log.info("Действие пользователя успешно отправлено: userId={}, eventId={}, actionType={}",
                     userId, eventId, actionType);
         } catch (StatusRuntimeException e) {
-            log.error("Не удалось отправить действие пользователя. Статус: {}, сообщение: {}" +
-                            "TEST: {}, {}, {}",
-                    e.getStatus(), e.getMessage(),userId, eventId, actionType, e);
+            log.error("Не удалось отправить действие пользователя: userId={}, eventId={}, actionType={}, status={}, message={}",
+                    userId, eventId, actionType, e.getStatus(), e.getMessage(), e);
             throw e;
         } catch (Exception e) {
-            log.error("Не удалось отправить действие пользователя. Исключение: {}, сообщение: {}",
-                    e.getClass().getName(), e.getMessage(), e);
+            log.error("Не удалось отправить действие пользователя: userId={}, eventId={}, actionType={}, error={}",
+                    userId, eventId, actionType, e.getMessage(), e);
             throw new RuntimeException("Ошибка при отправке действия пользователя", e);
         }
     }
