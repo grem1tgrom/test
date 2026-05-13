@@ -41,9 +41,9 @@ public class CompilationService {
         validateEventsExist(eventIds);
 
         Compilation compilation = repository.save(mapper.toEntity(dto, eventIds));
-        Set<EventShortDto> event = eventClient.findAllByIdIn(compilation.getEvents());
+        Set<EventShortDto> eventDtos = eventClient.findAllByIdIn(compilation.getEvents());
         log.info("Создана подборка, id = {}", compilation.getId());
-        return mapper.toFullDto(compilation, event);
+        return mapper.toFullDto(compilation, eventDtos);
     }
 
     @Transactional
@@ -64,9 +64,12 @@ public class CompilationService {
         validateEventsExist(events);
 
         compilation = mapper.toEntityGeneral(compilation, dto, events);
-        Set<EventShortDto> event = eventClient.findAllByIdIn(compilation.getEvents());
+        compilation = repository.save(compilation);
+
+        Set<EventShortDto> eventDtos = eventClient.findAllByIdIn(compilation.getEvents());
         log.info("Обновлена подборка id = {}", compId);
-        return mapper.toFullDto(compilation, event);
+
+        return mapper.toFullDto(compilation, eventDtos);
     }
 
     @Transactional(readOnly = true)

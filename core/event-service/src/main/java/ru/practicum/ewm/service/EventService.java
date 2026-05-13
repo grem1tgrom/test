@@ -109,10 +109,26 @@ public class EventService {
         EventState currentState = event.getState();
         EventStateAction action = dto.getStateAction();
 
-        LocalDateTime newDate = dto.getEventDate();
-        if (newDate != null) {
-            validateEventDate(newDate, action, currentState, event);
+        if (action == EventStateAction.PUBLISH_EVENT) {
+            if (currentState == EventState.PUBLISHED) {
+                throw new ConflictException("Событие уже опубликовано");
+            }
+            if (currentState == EventState.CANCELED) {
+                throw new ConflictException("Нельзя публиковать отменённое событие");
+            }
+            if (currentState != EventState.PENDING) {
+                throw new ConflictException("Можно публиковать только события в состоянии ожидания публикации");
+            }
         }
+
+        if (action == EventStateAction.REJECT_EVENT) {
+            if (currentState == EventState.PUBLISHED) {
+                throw new ConflictException("Нельзя отменить уже опубликованное событие");
+            }
+        }
+
+        LocalDateTime newDate = dto.getEventDate() != null ? dto.getEventDate() : event.getEventDate();
+        validateEventDate(newDate, action);
 
         EventState state = action == null
                 ? null
@@ -122,13 +138,15 @@ public class EventService {
             case SEND_TO_REVIEW, CANCEL_REVIEW -> null;
         };
 
-        LocalDateTime eventDate = dto.getEventDate() == null ? null : newDate;
         Long categoryId = dto.getCategory();
         Location location = (dto.getLocation() == null) ? null : locationService.getOrCreateLocation(dto.getLocation());
 
-        dto.setEventDate(eventDate);
-
         mapper.updateEntityFromDto(event, dto, categoryId, location, state);
+
+        if (action == EventStateAction.PUBLISH_EVENT) {
+            event.setPublishedOn(LocalDateTime.now());
+        }
+
         event = repository.save(event);
         log.info("Администратор обновил событие с id = {}", eventId);
 
@@ -409,28 +427,20 @@ public class EventService {
         return commentClient.findAllCommentsForEvent(eventId);
     }
 
-    private void validateEventDate(LocalDateTime newDate, EventStateAction action, EventState currentState, Event event)
+    private void validateEventDate(LocalDateTime eventDate, EventStateAction action)
             throws ConditionsException {
+        if (eventDate == null) {
+            return;
+        }
+
         if (action == EventStateAction.PUBLISH_EVENT) {
-            if (newDate.isBefore(LocalDateTime.now().plusHours(1))) {
+            if (eventDate.isBefore(LocalDateTime.now().plusHours(1))) {
                 throw new ConditionsException("Дата начала события должна быть не ранее чем через час от даты публикации");
             }
         } else {
-            if (newDate.isBefore(LocalDateTime.now().plusHours(2))) {
+            if (eventDate.isBefore(LocalDateTime.now().plusHours(2))) {
                 throw new ConditionsException("Дата начала события должна быть не ранее чем через два часа от текущего момента");
             }
-        }
-
-        if (currentState == EventState.PUBLISHED && action == EventStateAction.REJECT_EVENT) {
-            throw new ConflictException("Нельзя отменить уже опубликованное событие");
-        }
-
-        if (currentState != EventState.PENDING && action == EventStateAction.PUBLISH_EVENT) {
-            throw new ConflictException("Можно публиковать только события в состоянии ожидания публикации");
-        }
-
-        if (event.getPublishedOn() != null && newDate.isBefore(event.getPublishedOn().plusHours(1))) {
-            throw new ConditionsException("Дата события должна быть не раньше чем через час после публикации");
         }
     }
 
