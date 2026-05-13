@@ -1,5 +1,6 @@
 package ru.practicum.ewm.kafka;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.Properties;
 
+@Slf4j
 @Configuration
 public class KafkaClientConfig {
 
@@ -40,8 +42,7 @@ public class KafkaClientConfig {
                 if (producer == null) {
                     initProducer();
                 }
-                System.out.println("Trying to connect to Kafka at " + bootstrapServers);
-
+                log.debug("Connecting producer to Kafka at {}", bootstrapServers);
                 return producer;
             }
 
@@ -58,6 +59,9 @@ public class KafkaClientConfig {
                 if (producer != null) {
                     producer.close();
                 }
+                if (consumer != null) {
+                    consumer.close();
+                }
             }
 
             @Override
@@ -65,8 +69,7 @@ public class KafkaClientConfig {
                 if (consumer == null) {
                     initConsumer();
                 }
-                System.out.println("Trying to connect to Kafka at " + bootstrapServers);
-
+                log.debug("Connecting consumer to Kafka at {}", bootstrapServers);
                 return consumer;
             }
 
