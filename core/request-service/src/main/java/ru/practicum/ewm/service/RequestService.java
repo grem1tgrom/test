@@ -19,6 +19,7 @@ import ru.practicum.ewm.feign.user.UserClient;
 import ru.practicum.ewm.mapper.RequestMapper;
 import ru.practicum.ewm.model.Request;
 import ru.practicum.ewm.repository.RequestRepository;
+import ru.practicum.ewm.tesh.StatsClient;
 
 import javax.naming.ServiceUnavailableException;
 import java.time.LocalDateTime;
@@ -33,6 +34,7 @@ public class RequestService {
     private final EventClient eventClient;
     private final RequestRepository repository;
     private final RequestMapper mapper;
+    private final StatsClient statsClient;
 
 
     @Transactional
@@ -79,18 +81,27 @@ public class RequestService {
         }
         request = repository.save(request);
         log.info("Создан запрос, id = {}", request.getId());
+
+        if (request.getStatus() == RequestStatus.CONFIRMED) {
+            try {
+                log.info("Создан запрос, id = {}", request.getId());
+                statsClient.recordRegister(userId, eventId);
+            } catch (Exception e) {
+                log.warn("Не удалось отправить действие регистрации: {}", e.getMessage());
+            }
+        }
         return mapper.toDto(request);
     }
 
 
     @Transactional(readOnly = true)
     public List<ParticipationRequestDto> getRequestsByUser(Long userId) throws ServiceUnavailableException {
-        UserDto user = userClient.getUserById(userId);
         try {
             userClient.getUserById(userId);
         } catch (Exception e) {
             throw new ServiceUnavailableException("user-service недоступен");
         }
+
         return repository.findByRequesterId(userId).stream()
                 .map(mapper::toDto)
                 .collect(Collectors.toList());
@@ -240,5 +251,10 @@ public class RequestService {
     @Transactional(readOnly = true)
     public Long countByEventIdAndStatus(Long id, RequestStatus status) {
         return repository.countByEventIdAndStatus(id, status);
+    }
+
+    @Transactional(readOnly = true)
+    public Boolean existsConfirmedRequest(Long userId, Long eventId) {
+        return repository.existsByEventIdAndRequesterIdAndStatus(eventId, userId, RequestStatus.CONFIRMED);
     }
 }

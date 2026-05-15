@@ -6,11 +6,14 @@ spring:
   cloud:
     config:
       uri: http://localhost:8888
+      discovery:
+        enabled: true
+        service-id: config-server
       fail-fast: true
       retry:
-        max-attempts: 30
+        useRandomPolicy: true
         initial-interval: 1000
-        multiplier: 1.5
+        max-attempts: 30
         max-interval: 6000
 
 eureka:

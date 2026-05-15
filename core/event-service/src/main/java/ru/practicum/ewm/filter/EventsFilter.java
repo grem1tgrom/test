@@ -1,5 +1,6 @@
 package ru.practicum.ewm.filter;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -51,7 +52,7 @@ public class EventsFilter implements DateRangeAware {
     }
 
     public List<EventState> getStatesAsEnum() {
-        if (this.states == null || this.states.isEmpty()) {
+        if (this.states == null) {
             return null;
         }
         return this.states.stream()

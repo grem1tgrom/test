@@ -32,6 +32,8 @@ import ru.practicum.ewm.mapper.EventMapper;
 import ru.practicum.ewm.model.Event;
 import ru.practicum.ewm.model.Location;
 import ru.practicum.ewm.repository.EventRepository;
+import ru.practicum.ewm.tesh.AnalyzerClient;
+import ru.practicum.ewm.tesh.StatsClient;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -49,13 +51,13 @@ public class EventService {
 
     private final EventRepository repository;
     private final EventMapper mapper;
-
     private final UserClient userClient;
     private final LocationService locationService;
     private final RequestClient requestClient;
-    private final StatsService statsService;
     private final CommentClient commentClient;
     private final CategoryClient categoryClient;
+    private final StatsClient statsClient;
+    private final AnalyzerClient analyzerClient;
 
     @Transactional
     public EventFullDto create(EventNewDto dto, Long userId) throws ConditionsException {
@@ -67,9 +69,9 @@ public class EventService {
         Event event = mapper.toEntityFromDto(dto, userId, dto.getCategory(), location);
         event.setCreatedOn(LocalDateTime.now());
         event = repository.save(event);
-        log.info("Создано событи�� с id = {}", event.getId());
+        log.info("Создано событие с id = {}", event.getId());
 
-        return mapper.eventToFullDto(event, null, null, null, category, initiator);
+        return mapper.eventToFullDto(event, null, null, category, initiator);
     }
 
     @Transactional
@@ -83,13 +85,13 @@ public class EventService {
 
         Long categoryId = dto.getCategory();
         Location location = (dto.getLocation() == null) ? null : locationService.getOrCreateLocation(dto.getLocation());
-        EventState state = dto.getStateAction() == null ?
-                null :
-                switch (dto.getStateAction()) {
-                    case SEND_TO_REVIEW -> EventState.PENDING;
-                    case CANCEL_REVIEW -> EventState.CANCELED;
-                    case PUBLISH_EVENT, REJECT_EVENT -> null;
-                };
+        EventState state = dto.getStateAction() == null
+                ? null
+                : switch (dto.getStateAction()) {
+            case SEND_TO_REVIEW -> EventState.PENDING;
+            case CANCEL_REVIEW -> EventState.CANCELED;
+            case PUBLISH_EVENT, REJECT_EVENT -> null;
+        };
 
         mapper.updateEntityFromDto(event, dto, categoryId, location, state);
         event = repository.save(event);
@@ -97,8 +99,7 @@ public class EventService {
 
         CategoryDto category = categoryClient.getCategoryById(event.getCategoryId());
         Long calcConfirmedRequests = getConfirmedRequests(eventId);
-        Long calcView = statsService.getViewsForEvent(eventId);
-        return mapper.eventToFullDto(event, calcConfirmedRequests, calcView, getComments(eventId), category, initiator);
+        return mapper.eventToFullDto(event, calcConfirmedRequests, getComments(eventId), category, initiator);
     }
 
     @Transactional
@@ -107,46 +108,50 @@ public class EventService {
 
         EventState currentState = event.getState();
         EventStateAction action = dto.getStateAction();
-        LocalDateTime newDate = dto.getEventDate();
 
-        if (action != null) {
-            if (action == EventStateAction.PUBLISH_EVENT) {
-                if (currentState != EventState.PENDING) {
-                    throw new ConflictException("Можно публиковать только события в состоянии PENDING");
-                }
-            } else if (action == EventStateAction.REJECT_EVENT) {
-                if (currentState == EventState.PUBLISHED) {
-                    throw new ConflictException("Нельзя отклонить опубликованное событие");
-                }
+        if (action == EventStateAction.PUBLISH_EVENT) {
+            if (currentState == EventState.PUBLISHED) {
+                throw new ConflictException("Событие уже опубликовано");
+            }
+            if (currentState == EventState.CANCELED) {
+                throw new ConflictException("Нельзя публиковать отменённое событие");
+            }
+            if (currentState != EventState.PENDING) {
+                throw new ConflictException("Можно публиковать только события в состоянии ожидания публикации");
             }
         }
-        if (dto.getEventDate() != null) {
-            validateEventDate(newDate, action, currentState, event);
+
+        if (action == EventStateAction.REJECT_EVENT && currentState == EventState.PUBLISHED) {
+            throw new ConflictException("Нельзя отменить уже опубликованное событие");
         }
 
-        EventState state = action == null ?
-                null :
-                switch (action) {
-                    case PUBLISH_EVENT -> EventState.PUBLISHED;
-                    case REJECT_EVENT -> EventState.CANCELED;
-                    case SEND_TO_REVIEW, CANCEL_REVIEW -> null;
-                };
+        LocalDateTime newDate = dto.getEventDate() != null ? dto.getEventDate() : event.getEventDate();
+        validateEventDate(newDate, action);
 
-        LocalDateTime eventDate = dto.getEventDate() == null ? null : newDate;
+        EventState state = action == null
+                ? null
+                : switch (action) {
+            case PUBLISH_EVENT -> EventState.PUBLISHED;
+            case REJECT_EVENT -> EventState.CANCELED;
+            case SEND_TO_REVIEW, CANCEL_REVIEW -> null;
+        };
+
         Long categoryId = dto.getCategory();
         Location location = (dto.getLocation() == null) ? null : locationService.getOrCreateLocation(dto.getLocation());
 
-        dto.setEventDate(eventDate);
-
         mapper.updateEntityFromDto(event, dto, categoryId, location, state);
+
+        if (action == EventStateAction.PUBLISH_EVENT) {
+            event.setPublishedOn(LocalDateTime.now());
+        }
+
         event = repository.save(event);
         log.info("Администратор обновил событие с id = {}", eventId);
 
         UserDto initiator = getUserOrThrow(event.getInitiatorId());
         CategoryDto category = getCategoryOrThrow(event.getCategoryId());
         Long calcConfirmedRequests = getConfirmedRequests(eventId);
-        Long calcView = statsService.getViewsForEvent(eventId);
-        return mapper.eventToFullDto(event, calcConfirmedRequests, calcView, getComments(eventId), category, initiator);
+        return mapper.eventToFullDto(event, calcConfirmedRequests, getComments(eventId), category, initiator);
     }
 
     @Transactional(readOnly = true)
@@ -156,28 +161,28 @@ public class EventService {
         Event event = getEventOrThrow(eventId, userId);
         CategoryDto category = getCategoryOrThrow(event.getCategoryId());
         Long calcConfirmedRequests = getConfirmedRequests(eventId);
-        Long calcView = statsService.getViewsForEvent(eventId);
         log.info("Получено событие {} пользователя {}", eventId, userId);
-        return mapper.eventToFullDto(event, calcConfirmedRequests, calcView, getComments(eventId), category, initiator);
+        return mapper.eventToFullDto(event, calcConfirmedRequests, getComments(eventId), category, initiator);
     }
 
     @Transactional(readOnly = true)
-    public EventFullDto findPublicEventById(Long eventId, HttpServletRequest request) throws ConflictException, ConditionsException {
+    public EventFullDto findPublicEventById(Long eventId, Long userId, HttpServletRequest request)
+            throws ConflictException, ConditionsException {
         Event event = getPublishedEventOrThrow(eventId);
         Long calcConfirmedRequests = getConfirmedRequests(eventId);
-        Long calcView = statsService.getViewsForEvent(eventId);
         UserDto initiator = getUserOrThrow(event.getInitiatorId());
         CategoryDto category = getCategoryOrThrow(event.getCategoryId());
 
-        statsService.saveHit(
-                "category-service",
-                request.getRequestURI(),
-                request.getRemoteAddr(),
-                LocalDateTime.now()
-        );
+        if (userId != null) {
+            try {
+                statsClient.recordView(userId, eventId);
+            } catch (Exception e) {
+                log.warn("Не удалось записать просмотр userId={}, eventId={}: {}", userId, eventId, e.getMessage());
+            }
+        }
 
         log.info("Получено публичное событие {}", eventId);
-        return mapper.eventToFullDto(event, calcConfirmedRequests, calcView, getComments(eventId), category, initiator);
+        return mapper.eventToFullDto(event, calcConfirmedRequests, getComments(eventId), category, initiator);
     }
 
     @Transactional(readOnly = true)
@@ -185,17 +190,8 @@ public class EventService {
         UserDto initiator = getUserOrThrow(userId);
 
         List<Event> events = repository.findAllByInitiatorId(userId, pageable).getContent();
-        if (events.isEmpty()) {
-            return List.of();
-        }
-
-        Set<Long> eventIds = events.stream()
-                .map(Event::getId)
-                .collect(Collectors.toSet());
-
-        Set<Long> categoryIds = events.stream()
-                .map(Event::getCategoryId)
-                .collect(Collectors.toSet());
+        Set<Long> eventIds = events.stream().map(Event::getId).collect(Collectors.toSet());
+        Set<Long> categoryIds = events.stream().map(Event::getCategoryId).collect(Collectors.toSet());
 
         Map<Long, CategoryDto> categories = categoryClient.findAllByIds(categoryIds);
         Map<Long, Long> confirmedRequests = requestClient.countConfirmedByEventIds(eventIds);
@@ -204,86 +200,73 @@ public class EventService {
                 .map(event -> mapper.eventToShortDto(
                         event,
                         confirmedRequests.getOrDefault(event.getId(), 0L),
-                        statsService.getViewsForEvent(event.getId()),
                         categories.get(event.getCategoryId()),
-                        initiator)).toList();
+                        initiator))
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public List<EventShortDto> findPublicEventsWithFilter(EventsFilter filter, Pageable pageable, HttpServletRequest request) {
-        statsService.saveHit(
-                "category-service",
-                request.getRequestURI(),
-                request.getRemoteAddr(),
-                LocalDateTime.now()
-        );
-        return findEventsWithFilterInternal(
-                filter,
-                pageable,
-                false,
-                (event, viewsMap) -> {
-                    String uri = "/events/" + event.getId();
-                    Long views = viewsMap.getOrDefault(uri, 0L);
+        return findEventsWithFilterInternal(filter, pageable, false, (eventsPage, viewsMap) -> {
+            Set<Long> eventIds = eventsPage.stream().map(Event::getId).collect(Collectors.toSet());
+            Set<Long> categoryIds = eventsPage.stream().map(Event::getCategoryId).collect(Collectors.toSet());
+            Set<Long> userIds = eventsPage.stream().map(Event::getInitiatorId).collect(Collectors.toSet());
 
-                    CategoryDto category;
-                    try {
-                        category = categoryClient.getCategoryById(event.getCategoryId());
-                    } catch (ConditionsException e) {
-                        throw new RuntimeException(e);
-                    }
+            Map<Long, CategoryDto> categories;
+            try {
+                categories = categoryClient.findAllByIds(categoryIds);
+            } catch (ConditionsException e) {
+                throw new RuntimeException(e);
+            }
+            Map<Long, UserDto> users = userClient.findAllByIds(userIds);
+            Map<Long, Long> confirmedRequests = requestClient.countConfirmedByEventIds(eventIds);
 
-                    UserDto initiator = getUserOrThrow(event.getInitiatorId());
-                    Long confirmedRequests = getConfirmedRequests(event.getId());
-
-                    return mapper.eventToShortDto(event, confirmedRequests, views, category, initiator);
-                }
-        );
+            return eventsPage.stream()
+                    .map(event -> mapper.eventToShortDto(
+                            event,
+                            confirmedRequests.getOrDefault(event.getId(), 0L),
+                            categories.get(event.getCategoryId()),
+                            users.get(event.getInitiatorId())
+                    ))
+                    .toList();
+        });
     }
 
     @Transactional(readOnly = true)
     public List<EventFullDto> findAdminEventsWithFilter(EventsFilter filter, Pageable pageable) {
-        return findEventsWithFilterInternal(
-                filter,
-                pageable,
-                true,
-                (event, viewsMap) -> {
-                    String uri = "/events/" + event.getId();
-                    Long views = viewsMap.getOrDefault(uri, 0L);
+        return findEventsWithFilterInternal(filter, pageable, true, (eventsPage, viewsMap) -> {
+            Set<Long> eventIds = eventsPage.stream().map(Event::getId).collect(Collectors.toSet());
+            Set<Long> categoryIds = eventsPage.stream().map(Event::getCategoryId).collect(Collectors.toSet());
+            Set<Long> userIds = eventsPage.stream().map(Event::getInitiatorId).collect(Collectors.toSet());
 
-                    CategoryDto category;
-                    try {
-                        category = categoryClient.getCategoryById(event.getCategoryId());
-                    } catch (ConditionsException e) {
-                        throw new RuntimeException(e);
-                    }
+            Map<Long, CategoryDto> categories;
+            try {
+                categories = categoryClient.findAllByIds(categoryIds);
+            } catch (ConditionsException e) {
+                throw new RuntimeException(e);
+            }
+            Map<Long, UserDto> users = userClient.findAllByIds(userIds);
+            Map<Long, Long> confirmedRequests = requestClient.countConfirmedByEventIds(eventIds);
 
-                    UserDto initiator = getUserOrThrow(event.getInitiatorId());
-                    Long confirmedRequests = getConfirmedRequests(event.getId());
-
-                    return mapper.eventToFullDto(event, confirmedRequests, views,
-                            getComments(event.getId()), category, initiator);
-                }
-        );
+            return eventsPage.stream()
+                    .map(event -> mapper.eventToFullDto(
+                            event,
+                            confirmedRequests.getOrDefault(event.getId(), 0L),
+                            getComments(event.getId()),
+                            categories.get(event.getCategoryId()),
+                            users.get(event.getInitiatorId())
+                    ))
+                    .toList();
+        });
     }
 
     @Transactional(readOnly = true)
     public Set<EventShortDto> findAllByIdIn(Set<Long> ids) throws ConditionsException {
         Set<Event> events = repository.findAllByIdIn(ids);
-        if (events.isEmpty()) {
-            return Set.of();
-        }
 
-        Set<Long> eventIds = events.stream()
-                .map(Event::getId)
-                .collect(Collectors.toSet());
-
-        Set<Long> categoryIds = events.stream()
-                .map(Event::getCategoryId)
-                .collect(Collectors.toSet());
-
-        Set<Long> userIds = events.stream()
-                .map(Event::getInitiatorId)
-                .collect(Collectors.toSet());
+        Set<Long> eventIds = events.stream().map(Event::getId).collect(Collectors.toSet());
+        Set<Long> categoryIds = events.stream().map(Event::getCategoryId).collect(Collectors.toSet());
+        Set<Long> userIds = events.stream().map(Event::getInitiatorId).collect(Collectors.toSet());
 
         Map<Long, Long> confirmedRequests = requestClient.countConfirmedByEventIds(eventIds);
         Map<Long, CategoryDto> categories = categoryClient.findAllByIds(categoryIds);
@@ -293,45 +276,124 @@ public class EventService {
                 .map(event -> mapper.eventToShortDto(
                         event,
                         confirmedRequests.getOrDefault(event.getId(), 0L),
-                        statsService.getViewsForEvent(event.getId()),
                         categories.get(event.getCategoryId()),
                         users.get(event.getInitiatorId())
-                )).collect(Collectors.toSet());
+                ))
+                .collect(Collectors.toSet());
+    }
+
+    @Transactional(readOnly = true)
+    public List<EventShortDto> getRecommendations(Long userId, int size) {
+        if (userId == null) {
+            return List.of();
+        }
+
+        getUserOrThrow(userId);
+
+        Map<Long, Double> recommendationsMap;
+        try {
+            recommendationsMap = analyzerClient.getRecommendationsForUser(userId, size);
+        } catch (Exception e) {
+            log.warn("Не удалось получить рекомендации для пользователя {}: {}", userId, e.getMessage());
+            return List.of();
+        }
+
+        if (recommendationsMap == null || recommendationsMap.isEmpty()) {
+            return List.of();
+        }
+
+        List<Event> events = repository.findAllByIdInAndState(recommendationsMap.keySet(), EventState.PUBLISHED);
+        if (events.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> initiatorIds = events.stream().map(Event::getInitiatorId).collect(Collectors.toSet());
+        Set<Long> categoryIds = events.stream().map(Event::getCategoryId).collect(Collectors.toSet());
+        Set<Long> eventIds = events.stream().map(Event::getId).collect(Collectors.toSet());
+
+        Map<Long, UserDto> usersMap = userClient.findAllByIds(initiatorIds);
+        Map<Long, CategoryDto> categoriesMap;
+        try {
+            categoriesMap = categoryClient.findAllByIds(categoryIds);
+        } catch (ConditionsException e) {
+            log.warn("Не удалось получить категории для рекомендаций пользователя {}: {}", userId, e.getMessage());
+            return List.of();
+        }
+        Map<Long, Long> confirmedRequests = requestClient.countConfirmedByEventIds(eventIds);
+
+        return events.stream()
+                .sorted((e1, e2) -> {
+                    Double score1 = recommendationsMap.getOrDefault(e1.getId(), 0.0);
+                    Double score2 = recommendationsMap.getOrDefault(e2.getId(), 0.0);
+                    return score2.compareTo(score1);
+                })
+                .map(event -> {
+                    EventShortDto dto = mapper.eventToShortDto(
+                            event,
+                            confirmedRequests.getOrDefault(event.getId(), 0L),
+                            categoriesMap.get(event.getCategoryId()),
+                            usersMap.get(event.getInitiatorId())
+                    );
+                    dto.setRating(recommendationsMap.getOrDefault(event.getId(), 0.0));
+                    return dto;
+                })
+                .toList();
+    }
+
+    @Transactional
+    public void likeEvent(Long userId, Long eventId) throws ConflictException {
+        if (userId == null) {
+            throw new ConflictException("Для лайка требуется авторизованный пользователь");
+        }
+
+        getUserOrThrow(userId);
+        Event event = repository.findById(eventId)
+                .orElseThrow(() -> new NotFoundException("Событие с id=" + eventId + " не найдено"));
+
+        if (!event.getState().equals(EventState.PUBLISHED)) {
+            throw new ConflictException("Нельзя лайкнуть неопубликованное событие");
+        }
+
+        try {
+            Boolean hasConfirmedRequest = requestClient.existsConfirmedRequest(userId, eventId);
+            if (hasConfirmedRequest == null || !hasConfirmedRequest) {
+                throw new ConflictException("Пользователь может лайкать только посещённые им мероприятия");
+            }
+        } catch (Exception e) {
+            if (e instanceof ConflictException) {
+                throw e;
+            }
+            log.warn("Ошибка при проверке участия пользователя {} в событии {}: {}", userId, eventId, e.getMessage());
+            throw new ConflictException("Не удалось проверить участие пользователя в мероприятии");
+        }
+
+        try {
+            statsClient.recordLike(userId, eventId);
+        } catch (Exception e) {
+            log.warn("Не удалось отправить действие лайка: {}", e.getMessage());
+        }
     }
 
     private <T> List<T> findEventsWithFilterInternal(
             EventsFilter filter,
             Pageable pageable,
-            Boolean forAdmin,
-            BiFunction<Event, Map<String, Long>, T> mapper) {
-
+            boolean forAdmin,
+            BiFunction<List<Event>, Map<String, Long>, List<T>> mapperFn
+    ) {
         BooleanBuilder predicate = EventPredicateBuilder.buildPredicate(filter, forAdmin);
 
         if (!forAdmin) {
-            pageable = org.springframework.data.domain.PageRequest.of(
+            pageable = PageRequest.of(
                     pageable.getPageNumber(),
                     pageable.getPageSize(),
                     Sort.by(Sort.Direction.DESC, "eventDate")
             );
         }
+
         Page<Event> eventsPage = repository.findAll(predicate, pageable);
+        Map<String, Long> viewsUriMap = Collections.emptyMap();
 
-        if (eventsPage.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<String> uris = eventsPage.stream()
-                .map(e -> "/events/" + e.getId())
-                .toList();
-
-        Map<String, Long> viewsUriMap = statsService.getViewsForUris(uris);
-        Stream<Event> eventStream = eventsPage.stream();
-        List<T> result = eventStream
-                .map(e -> mapper.apply(e, viewsUriMap))
-                .toList();
-
-        log.info("Найдено {} событий в режиме {}", result.size(), forAdmin ? "ADMIN" : "PUBLIC");
-        return result;
+        return mapperFn.apply(eventsPage.getContent(), viewsUriMap);
     }
 
     private UserDto getUserOrThrow(Long userId) {
@@ -371,14 +433,19 @@ public class EventService {
         return commentClient.findAllCommentsForEvent(eventId);
     }
 
-    private void validateEventDate(LocalDateTime newDate, EventStateAction action, EventState currentState, Event event) throws ConditionsException {
+    private void validateEventDate(LocalDateTime eventDate, EventStateAction action)
+            throws ConditionsException {
+        if (eventDate == null) {
+            return;
+        }
+
         if (action == EventStateAction.PUBLISH_EVENT) {
-            if (newDate.isBefore(LocalDateTime.now().plusHours(1))) {
-                throw new ConditionsException("Дата начала должна быть не ранее чем через 1 час при публикации");
+            if (eventDate.isBefore(LocalDateTime.now().plusHours(1))) {
+                throw new ConditionsException("Дата начала события должна быть не ранее чем через час от даты публикации");
             }
-        } else if (currentState == EventState.PUBLISHED && event.getPublishedOn() != null) {
-            if (newDate.isBefore(event.getPublishedOn().plusHours(1))) {
-                throw new ConditionsException("Дата начала должна быть не ранее чем через 1 час после публикации");
+        } else {
+            if (eventDate.isBefore(LocalDateTime.now().plusHours(2))) {
+                throw new ConditionsException("Дата начала события должна быть не ранее чем через два часа от текущего момента");
             }
         }
     }

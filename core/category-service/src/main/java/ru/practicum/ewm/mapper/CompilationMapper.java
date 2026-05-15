@@ -16,20 +16,18 @@ import java.util.Set;
 @Mapper(config = CommonMapperConfiguration.class)
 public interface CompilationMapper {
 
-    @BeanMapping(ignoreByDefault = true, nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    @Mapping(target = "title", source = "dto.title")
-    @Mapping(target = "pinned", source = "dto.pinned")
+    @BeanMapping(ignoreByDefault = true)
     @Mapping(target = "events", source = "events")
+    @Mapping(target = "pinned", source = "dto.pinned")
+    @Mapping(target = "title", source = "dto.title")
     Compilation toEntity(CompilationUpdateDto dto, Set<Long> events);
 
-    @Mapping(target = "events", source = "events")
-    CompilationFullDto toFullDto(Compilation entity, Set<EventShortDto> events);
-
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    @Mapping(target = "id", ignore = true)
     @Mapping(target = "events", source = "events")
-    @Mapping(target = "title", source = "dto.title")
     @Mapping(target = "pinned", source = "dto.pinned")
-    Compilation toEntityGeneral(@MappingTarget Compilation entity, CompilationUpdateDto dto, Set<Long> events);
-}
+    @Mapping(target = "title", source = "dto.title")
+    Compilation toEntityGeneral(@MappingTarget Compilation compilation, CompilationUpdateDto dto, Set<Long> events);
 
+    @Mapping(target = "events", source = "events")
+    CompilationFullDto toFullDto(Compilation compilation, Set<EventShortDto> events);
+}

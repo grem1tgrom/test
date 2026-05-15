@@ -31,13 +31,16 @@ public class AdminEventController {
     private final EventService service;
 
     @GetMapping
-    public List<EventFullDto> find(@ParameterObject @Valid EventsFilter filter, @PageableDefault(size = 10) Pageable pageable) {
+    public List<EventFullDto> find(
+            @ParameterObject @Valid EventsFilter filter,
+            @PageableDefault(size = 10) Pageable pageable) {
         return service.findAdminEventsWithFilter(filter, pageable);
     }
 
     @PatchMapping("/{eventId}")
-    public EventFullDto update(@Positive @PathVariable Long eventId, @RequestBody @Valid EventUpdateDto dto)
-            throws ConditionsException, ConflictException {
+    public EventFullDto update(
+            @Positive @PathVariable Long eventId,
+            @RequestBody @Valid EventUpdateDto dto) throws ConditionsException, ConflictException {
         return service.updateAdmin(eventId, dto);
     }
 }

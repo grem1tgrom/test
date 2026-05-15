@@ -26,41 +26,45 @@ public class UserService {
     private final UserRepository repository;
     private final UserMapper mapper;
 
-
     @Transactional
     public UserDto create(UserDto userDto) throws ConflictException {
         log.info("Создать пользователя. email: {}", userDto.getEmail());
         if (isEmailExistsAnotherUser(userDto)) {
             throw new ConflictException("Адрес электронной почты уже используется");
         }
-        User user = repository.save(mapper.toEntity(userDto));
-        log.info("Создание пользователя OK, id = {}", user.getId());
+        User user = mapper.toEntity(userDto);
+        user = repository.save(user);
+        log.info("Создан пользователь. id: {}", user.getId());
         return mapper.toDto(user);
-    }
-
-    @Transactional
-    public void delete(Long userId) {
-        if (!userIsExist(userId)) {
-            throw new NotFoundException("Удаляемая запись не найдена");
-        }
-        repository.deleteById(userId);
-        log.info("Удален пользователь id = {}", userId);
     }
 
     @Transactional(readOnly = true)
     public List<UserDto> findUsers(List<Long> ids, Pageable pageable) {
-        var result = (CollectionUtils.isEmpty(ids))
-                ? repository.findAll(pageable).stream().toList()
-                : repository.findAllById(ids);
-        return result.stream()
+        log.info("Получить пользователей. ids: {}", ids);
+        List<User> users;
+        if (CollectionUtils.isEmpty(ids)) {
+            users = repository.findAll(pageable).getContent();
+        } else {
+            users = repository.findAllById(ids);
+        }
+        return users.stream()
                 .map(mapper::toDto)
                 .toList();
     }
 
+    @Transactional
+    public void delete(Long userId) {
+        log.info("Удалить пользователя. id: {}", userId);
+        if (!repository.existsById(userId)) {
+            throw new NotFoundException("Пользователь с id=" + userId + " не найден");
+        }
+        repository.deleteById(userId);
+    }
+
     @Transactional(readOnly = true)
     public Boolean isEmailExistsAnotherUser(UserDto userDto) {
-        return Optional.ofNullable(userDto.getId())
-                .map(id -> repository.existsByEmailAndIdNot(userDto.getEmail(), id))
+        Optional<Long> id = Optional.ofNullable(userDto.getId());
+        return id.map(value -> repository.existsByEmailAndIdNot(userDto.getEmail(), value))
                 .orElseGet(() -> repository.existsByEmail(userDto.getEmail()));
     }
 
