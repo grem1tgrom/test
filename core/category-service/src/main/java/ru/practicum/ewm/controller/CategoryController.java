@@ -5,11 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import ru.practicum.ewm.dto.category.CategoryDto;
 import ru.practicum.ewm.service.CategoryService;
 
@@ -22,11 +18,10 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Validated
 public class CategoryController {
-
     private final CategoryService service;
 
     @GetMapping
-    public List<CategoryDto> find(@PageableDefault(page = 0, size = 10) Pageable pageable) {
+    public List<CategoryDto> find(@PageableDefault(size = 10) Pageable pageable) {
         return service.find(pageable);
     }
 

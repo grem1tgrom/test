@@ -3,6 +3,7 @@ package ru.practicum.ewm.service;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +26,8 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 @Validated
+@RequiredArgsConstructor
 public class CompilationService {
 
     private final CompilationRepository repository;
@@ -40,15 +41,15 @@ public class CompilationService {
         validateEventsExist(eventIds);
 
         Compilation compilation = repository.save(mapper.toEntity(dto, eventIds));
-        Set<EventShortDto> event = eventClient.findAllByIdIn(compilation.getEvents());
+        Set<EventShortDto> eventDtos = eventClient.findAllByIdIn(compilation.getEvents());
         log.info("Создана подборка, id = {}", compilation.getId());
-        return mapper.toFullDto(compilation, event);
+        return mapper.toFullDto(compilation, eventDtos);
     }
 
     @Transactional
     public void delete(Long compId) {
         if (!compilationIsExist(compId)) {
-            throw new NotFoundException("Подборка с id " + compId + " не найдена");
+            throw new NotFoundException("Запись с id = " + compId + " не найдена");
         }
         repository.deleteById(compId);
         log.info("Удалена подборка id = {}", compId);
@@ -63,22 +64,22 @@ public class CompilationService {
         validateEventsExist(events);
 
         compilation = mapper.toEntityGeneral(compilation, dto, events);
-        Set<EventShortDto> event = eventClient.findAllByIdIn(compilation.getEvents());
-        log.info("Обновлена подборка id = {}", compId);
-        return mapper.toFullDto(compilation, event);
-    }
+        compilation = repository.save(compilation);
 
-    @Transactional(readOnly = true)
-    public Compilation findById(Long id) throws NotFoundException {
-        return repository.findById(id == null ? 0L : id)
-                .orElseThrow(() -> new NotFoundException("Запись не найдена"));
+        Set<EventShortDto> eventDtos = eventClient.findAllByIdIn(compilation.getEvents());
+        log.info("Обновлена подборка id = {}", compId);
+
+        return mapper.toFullDto(compilation, eventDtos);
     }
 
     @Transactional(readOnly = true)
     public List<CompilationFullDto> find(Boolean pinned, Pageable pageable) {
-        var page = (pinned != null)
-                ? repository.findAllByPinned(pinned, pageable)
-                : repository.findAll(pageable);
+        Page<Compilation> page;
+        if (pinned == null) {
+            page = repository.findAll(pageable);
+        } else {
+            page = repository.findAllByPinned(pinned, pageable);
+        }
 
         return page.getContent()
                 .stream()
@@ -119,5 +120,10 @@ public class CompilationService {
     public CompilationFullDto getEntityFool(Long compId) {
         Compilation comp = findById(compId);
         return mapper.toFullDto(comp, eventClient.findAllByIdIn(comp.getEvents()));
+    }
+
+    private Compilation findById(Long compId) {
+        return repository.findById(compId)
+                .orElseThrow(() -> new NotFoundException("Запись с id = " + compId + " не найдена"));
     }
 }

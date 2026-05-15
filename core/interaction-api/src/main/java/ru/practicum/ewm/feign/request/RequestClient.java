@@ -12,8 +12,11 @@ import java.util.Set;
 @FeignClient(name = "request-service", fallbackFactory = RequestClientFallbackFactory.class)
 public interface RequestClient {
     @GetMapping("/requests/{id}/{status}")
-    Long countByEventIdAndStatus(@PathVariable("id") Long id, @PathVariable("status") RequestStatus status);
+    Long countByEventIdAndStatus(@PathVariable Long id, @PathVariable RequestStatus status);
 
     @GetMapping("/requests/count")
-    Map<Long, Long> countConfirmedByEventIds(@RequestParam("eventIds") Set<Long> eventIds);
+    Map<Long, Long> countConfirmedByEventIds(@RequestParam Set<Long> eventIds);
+
+    @GetMapping("/requests/confirmed/{userId}/event/{eventId}/")
+    Boolean existsConfirmedRequest(@PathVariable Long userId, @PathVariable Long eventId);
 }
