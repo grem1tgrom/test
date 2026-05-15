@@ -44,6 +44,7 @@ public class KafkaClientConfig {
             @Override
             public void stop() {
                 if (producer != null) {
+                    producer.flush();
                     producer.close();
                 }
             }
